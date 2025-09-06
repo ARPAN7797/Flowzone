@@ -1,1 +1,238 @@
 
+        let tasks = JSON.parse(localStorage.getItem('taskmaster-tasks')) || [];
+        let currentFilter = 'all';
+        let editingTaskId = null;
+
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            renderTasks();
+            updateStats();
+            
+            
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('taskDueDate').min = today;
+            document.getElementById('editDueDate').min = today;
+        });
+
+        
+        document.getElementById('taskForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            addTask();
+        });
+
+        
+        document.getElementById('editForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            saveEditedTask();
+        });
+
+        function addTask() {
+            const title = document.getElementById('taskTitle').value.trim();
+            const description = document.getElementById('taskDescription').value.trim();
+            const priority = document.getElementById('taskPriority').value;
+            const dueDate = document.getElementById('taskDueDate').value;
+
+            if (!title) return;
+
+            const task = {
+                id: Date.now(),
+                title,
+                description,
+                priority,
+                dueDate,
+                completed: false,
+                createdAt: new Date().toISOString()
+            };
+
+            tasks.unshift(task);
+            saveTasks();
+            renderTasks();
+            updateStats();
+            
+            
+            document.getElementById('taskForm').reset();
+            
+            
+            showNotification('Task added successfully! 🎉');
+        }
+
+        function renderTasks() {
+            const tasksList = document.getElementById('tasksList');
+            const emptyState = document.getElementById('emptyState');
+            
+            let filteredTasks = tasks;
+            if (currentFilter === 'active') {
+                filteredTasks = tasks.filter(task => !task.completed);
+            } else if (currentFilter === 'completed') {
+                filteredTasks = tasks.filter(task => task.completed);
+            }
+
+            if (filteredTasks.length === 0) {
+                tasksList.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            
+            tasksList.innerHTML = filteredTasks.map(task => {
+                const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && !task.completed;
+                const priorityIcon = task.priority === 'high' ? '🔴' : task.priority === 'medium' ? '🟡' : '🟢';
+                
+                return `
+                    <div class="task-item priority-${task.priority} ${task.completed ? 'task-completed' : ''} bg-gray-50 rounded-lg p-4 fade-in ${isOverdue ? 'bg-red-50' : ''}">
+                        <div class="flex items-start gap-3">
+                            <button onclick="toggleTask(${task.id})" 
+                                    class="mt-1 w-5 h-5 rounded border-2 border-gray-300 flex items-center justify-center hover:border-blue-500 transition duration-200 ${task.completed ? 'bg-green-500 border-green-500' : ''}">
+                                ${task.completed ? '<span class="text-white text-xs">✓</span>' : ''}
+                            </button>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <h3 class="font-medium text-gray-800 ${task.completed ? 'line-through' : ''}">${task.title}</h3>
+                                    <span class="text-sm">${priorityIcon}</span>
+                                    ${isOverdue ? '<span class="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">Overdue</span>' : ''}
+                                </div>
+                                ${task.description ? `<p class="text-sm text-gray-600 mb-2 ${task.completed ? 'line-through' : ''}">${task.description}</p>` : ''}
+                                <div class="flex items-center gap-4 text-xs text-gray-500">
+                                    ${task.dueDate ? `<span>📅 Due: ${formatDate(task.dueDate)}</span>` : ''}
+                                    <span>Created: ${formatDate(task.createdAt.split('T')[0])}</span>
+                                </div>
+                            </div>
+                            <div class="flex gap-2">
+                                <button onclick="editTask(${task.id})" 
+                                        class="text-blue-600 hover:text-blue-800 p-1 rounded hover:bg-blue-100 transition duration-200">
+                                    ✏
+                                </button>
+                                <button onclick="deleteTask(${task.id})" 
+                                        class="text-red-600 hover:text-red-800 p-1 rounded hover:bg-red-100 transition duration-200">
+                                    🗑
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function toggleTask(id) {
+            const task = tasks.find(t => t.id === id);
+            if (task) {
+                task.completed = !task.completed;
+                saveTasks();
+                renderTasks();
+                updateStats();
+                showNotification(task.completed ? 'Task completed! 🎉' : 'Task marked as active 📝');
+            }
+        }
+
+        function editTask(id) {
+            const task = tasks.find(t => t.id === id);
+            if (task) {
+                editingTaskId = id;
+                document.getElementById('editTitle').value = task.title;
+                document.getElementById('editDescription').value = task.description || '';
+                document.getElementById('editPriority').value = task.priority;
+                document.getElementById('editDueDate').value = task.dueDate || '';
+                document.getElementById('editModal').classList.remove('hidden');
+                document.getElementById('editModal').classList.add('flex');
+            }
+        }
+
+        function saveEditedTask() {
+            const task = tasks.find(t => t.id === editingTaskId);
+            if (task) {
+                task.title = document.getElementById('editTitle').value.trim();
+                task.description = document.getElementById('editDescription').value.trim();
+                task.priority = document.getElementById('editPriority').value;
+                task.dueDate = document.getElementById('editDueDate').value;
+                
+                saveTasks();
+                renderTasks();
+                updateStats();
+                closeEditModal();
+                showNotification('Task updated successfully! ✨');
+            }
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').classList.add('hidden');
+            document.getElementById('editModal').classList.remove('flex');
+            editingTaskId = null;
+        }
+
+        function deleteTask(id) {
+            if (confirm('Are you sure you want to delete this task?')) {
+                tasks = tasks.filter(t => t.id !== id);
+                saveTasks();
+                renderTasks();
+                updateStats();
+                showNotification('Task deleted 🗑');
+            }
+        }
+
+        function filterTasks(filter) {
+            currentFilter = filter;
+            
+            
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('bg-blue-500', 'text-white');
+                btn.classList.add('bg-gray-200', 'hover:bg-gray-300');
+            });
+            
+            event.target.classList.remove('bg-gray-200', 'hover:bg-gray-300');
+            event.target.classList.add('bg-blue-500', 'text-white');
+            
+            renderTasks();
+        }
+
+        function updateStats() {
+            const total = tasks.length;
+            const completed = tasks.filter(t => t.completed).length;
+            const active = total - completed;
+            
+            document.getElementById('totalTasks').textContent = total;
+            document.getElementById('activeTasks').textContent = active;
+            document.getElementById('completedTasks').textContent = completed;
+        }
+
+        function saveTasks() {
+            localStorage.setItem('taskmaster-tasks', JSON.stringify(tasks));
+        }
+
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', { 
+                month: 'short', 
+                day: 'numeric',
+                year: date.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
+            });
+        }
+
+        function showNotification(message) {
+            
+            const notification = document.createElement('div');
+            notification.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 fade-in';
+            notification.textContent = message;
+            
+            document.body.appendChild(notification);
+            
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
+
+        
+        document.getElementById('editModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeEditModal();
+            }
+        });
+
+        
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeEditModal();
+            }
+        });
+(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9750365e06ec7a19',t:'MTc1NjE3ODYyNi4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();
